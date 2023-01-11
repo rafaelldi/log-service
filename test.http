@@ -1,0 +1,14 @@
+### Create Index
+PUT http://localhost:9200/my-logs
+
+### Create Data View
+POST http://localhost:5601/api/data_views/data_view
+Content-Type: application/json
+kbn-xsrf: true
+
+{
+  "data_view": {
+    "title": "my-logs",
+    "name": "my-data-view"
+  }
+}
