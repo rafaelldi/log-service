@@ -36,7 +36,7 @@ public class IdeaExporter : IFileExporter
                 continue;
             }
 
-            ExportLogAsync(match);
+            await ExportLogAsync(match);
         }
     }
 
