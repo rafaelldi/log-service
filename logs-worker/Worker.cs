@@ -1,20 +1,22 @@
 using System.Net.Http.Json;
-using Elastic.Clients.Elasticsearch;
 
 namespace logs_worker;
 
 public class Worker : BackgroundService
 {
-    private const string LogIndexName = "my-logs";
+    public const string LogIndexName = "my-logs";
 
-    private readonly ElasticsearchClient _elasticsearchClient;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IEnumerable<IFileExporter> _exporters;
     private readonly ILogger<Worker> _logger;
 
-    public Worker(ElasticsearchClient elasticsearchClient, IHttpClientFactory httpClientFactory, ILogger<Worker> logger)
+    public Worker(
+        IHttpClientFactory httpClientFactory, 
+        IEnumerable<IFileExporter> exporters,
+        ILogger<Worker> logger)
     {
-        _elasticsearchClient = elasticsearchClient;
         _httpClientFactory = httpClientFactory;
+        _exporters = exporters;
         _logger = logger;
     }
 
@@ -39,7 +41,7 @@ public class Worker : BackgroundService
 
         foreach (var file in directory.GetFiles())
         {
-            await ProcessFileAsync(file);
+            await ProcessFileAsync(file, stoppingToken);
         }
     }
 
@@ -62,13 +64,15 @@ public class Worker : BackgroundService
         await kibanaClient.PostAsync("/api/data_views/data_view", JsonContent.Create(dataView), cancellation);
     }
 
-    private async Task ProcessFileAsync(FileInfo file)
+    private async Task ProcessFileAsync(FileInfo file, CancellationToken cancellation)
     {
-        var log = new { Title = "My-log" };
-        var response = await _elasticsearchClient.IndexAsync(log, request => request.Index(LogIndexName));
-        if (response.IsValidResponse)
+        foreach (var exporter in _exporters)
         {
-            _logger.LogInformation($"Index document with ID {response.Id} succeeded.");
+            if (!exporter.IsApplicable(file.Name)) continue;
+
+            _logger.LogDebug("Exporting file: {filename}", file.Name);
+            await exporter.ExportAsync(file, cancellation);
+            break;
         }
     }
 }
