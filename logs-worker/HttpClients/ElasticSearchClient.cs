@@ -15,7 +15,7 @@ public class ElasticSearchClient : IDisposable
 
     public async Task CreateIndex(string indexName, CancellationToken ct)
     {
-        _logger.LogInformation("Creating index {index}", indexName);
+        _logger.LogDebug("Creating index {index}", indexName);
         await _httpClient.PutAsync($"/{indexName}", JsonContent.Create(new { }), ct);
     }
 

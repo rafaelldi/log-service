@@ -39,7 +39,7 @@ services:
       context: .
       dockerfile: logs-worker/Dockerfile
     volumes:
-      - ${LOGS_FOLDER}:/logs-folder:ro
+      - ${LOGS_FOLDER}:/logs-folder:rw
     environment:
       DOTNET_ENVIRONMENT: Development
     depends_on:
