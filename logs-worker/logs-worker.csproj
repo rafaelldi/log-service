@@ -13,6 +13,7 @@
     <PackageReference Include="Elastic.Clients.Elasticsearch" Version="8.0.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="7.0.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="7.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="7.0.2" />
   </ItemGroup>
 
   <ItemGroup>

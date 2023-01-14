@@ -1,21 +1,27 @@
-using System.Net.Http.Json;
+using logs_worker.HttpClients;
 
 namespace logs_worker;
 
 public class Worker : BackgroundService
 {
     public const string LogIndexName = "my-logs";
+    private const string LogDataViewId = "my-log-data-view";
 
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ElasticSearchClient _elasticSearchClient;
+    private readonly KibanaClient _kibanaClient;
     private readonly IEnumerable<IFileExporter> _exporters;
+
     private readonly ILogger<Worker> _logger;
 
     public Worker(
-        IHttpClientFactory httpClientFactory, 
+        ElasticSearchClient elasticSearchClient,
+        KibanaClient kibanaClient,
         IEnumerable<IFileExporter> exporters,
-        ILogger<Worker> logger)
+        ILogger<Worker> logger
+    )
     {
-        _httpClientFactory = httpClientFactory;
+        _elasticSearchClient = elasticSearchClient;
+        _kibanaClient = kibanaClient;
         _exporters = exporters;
         _logger = logger;
     }
@@ -45,33 +51,22 @@ public class Worker : BackgroundService
         }
     }
 
-    private async Task InitializeAsync(CancellationToken cancellation)
+    private async Task InitializeAsync(CancellationToken ct)
     {
-        _logger.LogInformation("Creating index {index}", LogIndexName);
-        using var elasticsearchClient = _httpClientFactory.CreateClient("elasticsearch");
-        await elasticsearchClient.PutAsync($"/{LogIndexName}", JsonContent.Create(new { }), cancellation);
-
-        _logger.LogInformation("Creating data view for {index}", LogIndexName);
-        using var kibanaClient = _httpClientFactory.CreateClient("kibana");
-        var dataView = new
-        {
-            data_view = new
-            {
-                title = LogIndexName,
-                name = "Logs Data View"
-            }
-        };
-        await kibanaClient.PostAsync("/api/data_views/data_view", JsonContent.Create(dataView), cancellation);
+        await _elasticSearchClient.CreateIndex(LogIndexName, ct);
+        var isDataViewExists = await _kibanaClient.IsDataViewExists(LogDataViewId, ct);
+        if (isDataViewExists) return;
+        await _kibanaClient.CreateDataView(LogDataViewId, LogIndexName, ct);
     }
 
-    private async Task ProcessFileAsync(FileInfo file, CancellationToken cancellation)
+    private async Task ProcessFileAsync(FileInfo file, CancellationToken ct)
     {
         foreach (var exporter in _exporters)
         {
             if (!exporter.IsApplicable(file.Name)) continue;
 
             _logger.LogDebug("Exporting file: {filename}", file.Name);
-            await exporter.ExportAsync(file, cancellation);
+            await exporter.ExportAsync(file, ct);
             break;
         }
     }

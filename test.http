@@ -1,6 +1,12 @@
 ### Create Index
 PUT http://localhost:9200/my-logs
 
+### Get Data Views
+GET http://localhost:5601/api/data_views
+
+### Get Data View
+GET http://localhost:5601/api/data_views/data_view/my-logs-data-view
+
 ### Create Data View
 POST http://localhost:5601/api/data_views/data_view
 Content-Type: application/json
@@ -8,6 +14,7 @@ kbn-xsrf: true
 
 {
   "data_view": {
+    "id": "my-logs-data-view",
     "title": "my-logs",
     "name": "my-data-view"
   }
