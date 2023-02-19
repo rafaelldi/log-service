@@ -10,7 +10,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "additional", "additional", 
 		docker-compose.yml = docker-compose.yml
 		.dockerignore = .dockerignore
 		.env = .env
-		test.http = test.http
 	EndProjectSection
 EndProject
 Global

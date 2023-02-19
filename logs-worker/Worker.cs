@@ -1,36 +1,24 @@
-using logs_worker.HttpClients;
-
 namespace logs_worker;
 
 public class Worker : BackgroundService
 {
-    public const string LogIndexName = "my-logs";
-    private const string LogDataViewId = "my-log-data-view";
     private const string DefaultLogDirectory = "/logs-folder";
     private const string DefaultErrorDirectory = "/logs-folder/error";
 
-    private readonly ElasticSearchClient _elasticSearchClient;
-    private readonly KibanaClient _kibanaClient;
-    private readonly IEnumerable<IFileExporter> _exporters;
-
+    private readonly IEnumerable<IFileParser> _parsers;
+    private readonly SeqExporter _exporter;
     private readonly ILogger<Worker> _logger;
 
-    public Worker(
-        ElasticSearchClient elasticSearchClient,
-        KibanaClient kibanaClient,
-        IEnumerable<IFileExporter> exporters,
-        ILogger<Worker> logger
-    )
+    public Worker(IEnumerable<IFileParser> parsers, SeqExporter exporter, ILogger<Worker> logger)
     {
-        _elasticSearchClient = elasticSearchClient;
-        _kibanaClient = kibanaClient;
-        _exporters = exporters;
+        _parsers = parsers;
+        _exporter = exporter;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await InitializeAsync(stoppingToken);
+        Initialize();
 
         _logger.LogInformation("Start monitoring folder");
 
@@ -48,41 +36,34 @@ public class Worker : BackgroundService
 
         _logger.LogInformation("Log files are found");
 
+        var exporterTask = _exporter.ExportAsync(errorDirectory, stoppingToken);
+
+        var parsersTasks = new List<Task>();
         foreach (var file in directory.GetFiles())
         {
-            await ProcessFileAsync(file, errorDirectory, stoppingToken);
+            var exporter = GetParser(file);
+            if (exporter is null) continue;
+            var parsersTask = exporter.ParseAsync(file, errorDirectory, stoppingToken);
+            parsersTasks.Add(parsersTask);
         }
+
+        await Task.WhenAll(parsersTasks);
         
+        _exporter.GetWriter().Complete();
+
+        await exporterTask;
+
         _logger.LogInformation("Exporting finished");
     }
 
-    private async Task InitializeAsync(CancellationToken ct)
+    private void Initialize()
     {
-        await _elasticSearchClient.CreateIndex(LogIndexName, ct);
-
-        var isDataViewExists = await _kibanaClient.IsDataViewExists(LogDataViewId, ct);
-        if (!isDataViewExists)
-        {
-            await _kibanaClient.CreateDataView(LogDataViewId, LogIndexName, ct);
-        }
-
         if (!Directory.Exists(DefaultErrorDirectory))
         {
             Directory.CreateDirectory(DefaultErrorDirectory);
         }
     }
 
-    private async Task ProcessFileAsync(FileInfo file, DirectoryInfo errorDirectory, CancellationToken ct)
-    {
-        foreach (var exporter in _exporters)
-        {
-            if (!exporter.IsApplicable(file.Name)) continue;
-
-            _logger.LogInformation("Exporting file: {filename}", file.Name);
-            await exporter.ExportAsync(file, errorDirectory, ct);
-            _logger.LogInformation("Exporting file finished: {filename}", file.Name);
-
-            break;
-        }
-    }
+    private IFileParser? GetParser(FileInfo file) =>
+        _parsers.FirstOrDefault(exporter => exporter.IsApplicable(file.Name));
 }

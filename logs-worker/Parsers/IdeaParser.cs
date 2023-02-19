@@ -1,31 +1,34 @@
 ﻿using System.Globalization;
 using System.Text.RegularExpressions;
-using Elastic.Clients.Elasticsearch;
+using System.Threading.Channels;
 
-namespace logs_worker.Exporters;
+namespace logs_worker.Parsers;
 
-public class IdeaExporter : IFileExporter
+public class IdeaParser : IFileParser
 {
+    private readonly ChannelWriter<Log> _writer;
+    private readonly ILogger<IdeaParser> _logger;
+
     private const string DefaultFileName = "idea.log";
-    private readonly ElasticsearchClient _elasticsearchClient;
-    private readonly ILogger<IdeaExporter> _logger;
+    private const string FileNamePattern = @"idea\.\d+.log";
 
     private const string Pattern =
         @"^(?<time>[^\[]*)\s+\[\s*(?<duration>\d+)\]\s+(?<level>[A-Z]+)\s+\-\s*(?<source>.*?)\s*-(?<message>.*)$";
 
+    private readonly Regex _fileNameRegex = new(FileNamePattern);
     private readonly Regex _regex = new(Pattern);
 
-    public IdeaExporter(ElasticsearchClient elasticsearchClient, ILogger<IdeaExporter> logger)
+    public IdeaParser(SeqExporter seqExporter, ILogger<IdeaParser> logger)
     {
-        _elasticsearchClient = elasticsearchClient;
+        _writer = seqExporter.GetWriter();
         _logger = logger;
     }
 
-    public bool IsApplicable(string filename) => filename == DefaultFileName;
+    public bool IsApplicable(string filename) => filename == DefaultFileName || _fileNameRegex.IsMatch(filename);
 
-    public async Task ExportAsync(FileInfo file, DirectoryInfo errorDirectory, CancellationToken ct)
+    public async Task ParseAsync(FileInfo file, DirectoryInfo errorDirectory, CancellationToken ct)
     {
-        var errorFilePath = errorDirectory.FullName + "/" + DefaultFileName;
+        var errorFilePath = errorDirectory.FullName + "/" + file.Name;
         await using var errorWriter = File.CreateText(errorFilePath);
 
         Log? currentLog = null;
@@ -39,9 +42,15 @@ public class IdeaExporter : IFileExporter
             var match = _regex.Match(line);
             if (!match.Success)
             {
-                if (currentLog is not null)
+                if (currentLog?.Message != null)
                 {
-                    currentLog.Message += "\n" + line;
+                    currentLog.Exception = currentLog.Message;
+                    currentLog.Exception += "\n" + line;
+                    currentLog.Message = null;
+                }
+                else if (currentLog?.Exception != null)
+                {
+                    currentLog.Exception += "\n" + line;
                 }
                 else
                 {
@@ -59,7 +68,7 @@ public class IdeaExporter : IFileExporter
 
             if (currentLog is not null)
             {
-                await ExportLogAsync(currentLog);
+                await _writer.WriteAsync(currentLog, ct);
             }
 
             currentLog = new Log();
@@ -68,7 +77,7 @@ public class IdeaExporter : IFileExporter
 
         if (currentLog is not null)
         {
-            await ExportLogAsync(currentLog);
+            await _writer.WriteAsync(currentLog, ct);
         }
     }
 
@@ -117,20 +126,13 @@ public class IdeaExporter : IFileExporter
         }
     }
 
-    private async Task ExportLogAsync(Log log)
-    {
-        var response = await _elasticsearchClient.IndexAsync(log, request => request.Index(Worker.LogIndexName));
-        if (!response.IsValidResponse)
-        {
-            _logger.LogWarning("Unable to push log: {response}", response.ToString());
-        }
-    }
-
     private static LogLevel? ParseLogLevel(string level) => level switch
     {
-        "INFO" => LogLevel.Info,
-        "WARN" => LogLevel.Warn,
-        "SEVERE" => LogLevel.Severe,
+        "FINER" => LogLevel.Trace,
+        "FINE" => LogLevel.Debug,
+        "INFO" => LogLevel.Information,
+        "WARN" => LogLevel.Warning,
+        "SEVERE" => LogLevel.Error,
         _ => null
     };
 }
