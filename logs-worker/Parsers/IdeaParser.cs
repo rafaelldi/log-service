@@ -33,6 +33,7 @@ public class IdeaParser : IFileParser
         var errorFilePath = errorDirectory.FullName + "/" + file.Name;
         await using var errorWriter = File.CreateText(errorFilePath);
 
+        var parsedLogs = 0;
         Log? currentLog = null;
         await foreach (var line in File.ReadLinesAsync(file.FullName, ct))
         {
@@ -74,6 +75,7 @@ public class IdeaParser : IFileParser
             }
 
             currentLog = new Log();
+            parsedLogs++;
             UpdateLogByMatch(currentLog, match);
         }
 
@@ -81,6 +83,8 @@ public class IdeaParser : IFileParser
         {
             await _writer.WriteAsync(currentLog, ct);
         }
+
+        _logger.LogInformation("{LogCount} lines are parsed from the file {FileName}", parsedLogs, file.Name);
     }
 
     private void UpdateLogByMatch(Log log, Match match)

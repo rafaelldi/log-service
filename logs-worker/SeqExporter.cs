@@ -7,11 +7,13 @@ namespace logs_worker;
 public class SeqExporter
 {
     private readonly SeqClient _seqClient;
+    private readonly ILogger<SeqExporter> _logger;
     private readonly Channel<Log> _channel;
 
-    public SeqExporter(SeqClient seqClient)
+    public SeqExporter(SeqClient seqClient, ILogger<SeqExporter> logger)
     {
         _seqClient = seqClient;
+        _logger = logger;
         _channel = Channel.CreateUnbounded<Log>(new UnboundedChannelOptions
         {
             SingleReader = true,
@@ -28,6 +30,7 @@ public class SeqExporter
 
         var sb = new StringBuilder();
         var logsCount = 0;
+        var sentLogs = 0;
 
         await foreach (var log in _channel.Reader.ReadAllAsync(ct))
         {
@@ -58,9 +61,12 @@ public class SeqExporter
                 await errorWriter.WriteLineAsync(logs);
             }
 
+            sentLogs += logsCount;
             logsCount = 0;
             sb.Clear();
         }
+
+        _logger.LogInformation("{LogCount} logs are sent to Seq", sentLogs);
     }
 
     private void AppendLogLine(
