@@ -1,9 +1,11 @@
 ﻿using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
+using JetBrains.Annotations;
 
 namespace logs_worker.Parsers;
 
+[UsedImplicitly]
 public class IdeaParser : IFileParser
 {
     private readonly ChannelWriter<Log> _writer;
