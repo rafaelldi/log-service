@@ -1,32 +1,33 @@
-﻿using System.Globalization;
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using JetBrains.Annotations;
 
 namespace logs_worker.Parsers;
 
 [UsedImplicitly]
-public class IdeaParser : IFileParser
+public class RiderBackendParser : IFileParser
 {
     private readonly ChannelWriter<Log> _writer;
-    private readonly ILogger<IdeaParser> _logger;
+    private readonly DateTimeProvider _dateTimeProvider;
+    private readonly ILogger<RiderBackendParser> _logger;
 
-    private const string DefaultFileName = "idea.log";
-    private const string FileNamePattern = @"idea\.\d+.log";
+    private const string FileNamePattern = @"\d+.backend.log";
 
     private const string Pattern =
-        @"^(?<time>[^\[]*)\s+\[\s*(?<duration>\d+)\]\s+(?<level>[A-Z]+)\s+\-\s*(?<source>.*?)\s*-(?<message>.*)$";
+        @"^(?<time>.*)\s*\|(?<level>[A-Z])\|\s*(?<source>.*)\s*\|\s*(?<thread>.*)\s*\|\s*(?<message>.*)\s*$";
 
     private readonly Regex _fileNameRegex = new(FileNamePattern);
     private readonly Regex _regex = new(Pattern);
 
-    public IdeaParser(SeqExporter seqExporter, ILogger<IdeaParser> logger)
+    public RiderBackendParser(SeqExporter seqExporter, DateTimeProvider dateTimeProvider,
+        ILogger<RiderBackendParser> logger)
     {
         _writer = seqExporter.GetWriter();
+        _dateTimeProvider = dateTimeProvider;
         _logger = logger;
     }
 
-    public bool IsApplicable(string filename) => filename == DefaultFileName || _fileNameRegex.IsMatch(filename);
+    public bool IsApplicable(string filename) => _fileNameRegex.IsMatch(filename);
 
     public async Task ParseAsync(FileInfo file, DirectoryInfo errorDirectory, CancellationToken ct)
     {
@@ -95,19 +96,15 @@ public class IdeaParser : IFileParser
         switch (group.Name)
         {
             case "time":
-                if (DateTime.TryParseExact(group.Value, "yyyy-MM-dd HH:mm:ss,FFF", CultureInfo.InvariantCulture,
-                        DateTimeStyles.None, out var time))
+                if (TimeOnly.TryParse(group.Value, out var time))
                 {
-                    log.TimeStamp = time;
+                    log.TimeStamp = _dateTimeProvider.LogDateTime + time.ToTimeSpan();
                 }
                 else
                 {
                     _logger.LogWarning("Cannot parse time {time}", group.Value);
                 }
 
-                break;
-            case "duration":
-                log.Duration = group.Value.Trim();
                 break;
             case "level":
                 var value = group.Value.Trim();
@@ -117,6 +114,9 @@ public class IdeaParser : IFileParser
                 break;
             case "source":
                 log.Source = group.Value.Trim();
+                break;
+            case "thread":
+                log.Thread = group.Value.Trim();
                 break;
             case "message":
                 log.Message = group.Value.Trim();
@@ -128,11 +128,11 @@ public class IdeaParser : IFileParser
 
     private static LogLevel? ParseLogLevel(string level) => level switch
     {
-        "FINER" => LogLevel.Trace,
-        "FINE" => LogLevel.Debug,
-        "INFO" => LogLevel.Information,
-        "WARN" => LogLevel.Warning,
-        "SEVERE" => LogLevel.Error,
+        "T" => LogLevel.Trace,
+        "V" => LogLevel.Debug,
+        "I" => LogLevel.Information,
+        "W" => LogLevel.Warning,
+        "E" => LogLevel.Error,
         _ => null
     };
 }

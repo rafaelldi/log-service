@@ -1,26 +1,32 @@
+using System.Text.RegularExpressions;
+
 namespace logs_worker;
 
 public class Worker : BackgroundService
 {
     private const string DefaultLogDirectory = "/logs-folder";
     private const string DefaultErrorDirectory = "/logs-folder/error";
+    private const string TroubleshootingTxt = "/logs-folder/troubleshooting.txt";  
 
     private readonly IEnumerable<IFileParser> _parsers;
     private readonly SeqExporter _exporter;
+    private readonly DateTimeProvider _dateTimeProvider;
     private readonly ILogger<Worker> _logger;
 
-    public Worker(IEnumerable<IFileParser> parsers, SeqExporter exporter, ILogger<Worker> logger)
+    public Worker(IEnumerable<IFileParser> parsers, SeqExporter exporter, DateTimeProvider dateTimeProvider,
+        ILogger<Worker> logger)
     {
         _parsers = parsers;
         _exporter = exporter;
+        _dateTimeProvider = dateTimeProvider;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        Initialize();
+        await Initialize();
 
-        _logger.LogInformation("Start monitoring folder");
+        _logger.LogInformation("Start monitoring folder {LogFolder}", DefaultLogDirectory);
 
         var directory = new DirectoryInfo(DefaultLogDirectory);
         var errorDirectory = new DirectoryInfo(DefaultErrorDirectory);
@@ -48,7 +54,7 @@ public class Worker : BackgroundService
         }
 
         await Task.WhenAll(parsersTasks);
-        
+
         _exporter.GetWriter().Complete();
 
         await exporterTask;
@@ -56,11 +62,27 @@ public class Worker : BackgroundService
         _logger.LogInformation("Exporting finished");
     }
 
-    private void Initialize()
+    private async Task Initialize()
     {
         if (!Directory.Exists(DefaultErrorDirectory))
         {
             Directory.CreateDirectory(DefaultErrorDirectory);
+        }
+
+        if (File.Exists(TroubleshootingTxt))
+        {
+            using var sr = File.OpenText(TroubleshootingTxt);
+            await sr.ReadLineAsync();
+            var infoLine = await sr.ReadLineAsync() ?? string.Empty;
+            var infoPattern = @"^Build\sversion:.+Build:\s#RD-[\d\.]+\s(?<date>.*)$";
+            var infoRegex = new Regex(infoPattern);
+            var match = infoRegex.Match(infoLine);
+            if (match.Success &&
+                match.Groups.TryGetValue("date", out var dateGroup) &&
+                DateTime.TryParse(dateGroup.Value, out var date))
+            {
+                _dateTimeProvider.LogDateTime = date;
+            }
         }
     }
 

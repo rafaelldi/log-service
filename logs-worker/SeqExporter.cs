@@ -49,6 +49,7 @@ public class SeqExporter
                 log.Exception,
                 log.Duration,
                 log.Source,
+                log.Thread,
                 log.Message
             );
 
@@ -76,6 +77,7 @@ public class SeqExporter
         string? exception,
         string? duration,
         string? source,
+        string? thread,
         string? message)
     {
         sb.Append("{\"@t\":\"");
@@ -87,20 +89,39 @@ public class SeqExporter
         sb.Append('\"');
 
         sb.Append(",\"@mt\":\"");
-        sb.Append("{Duration},{Source},{Message}");
+        if (duration != null) sb.Append("{Duration},");
+        if (source != null) sb.Append("{Source},");
+        if (thread != null) sb.Append("{Thread},");
+        if (message != null) sb.Append("{Message}");
         sb.Append('\"');
 
-        sb.Append(",\"Duration\":\"");
-        AppendEscapedValue(sb, duration);
-        sb.Append('\"');
+        if (duration != null)
+        {
+            sb.Append(",\"Duration\":\"");
+            AppendEscapedValue(sb, duration);
+            sb.Append('\"');
+        }
 
-        sb.Append(",\"Source\":\"");
-        AppendEscapedValue(sb, source);
-        sb.Append('\"');
+        if (source != null)
+        {
+            sb.Append(",\"Source\":\"");
+            AppendEscapedValue(sb, source);
+            sb.Append('\"');
+        }
 
-        sb.Append(",\"Message\":\"");
-        AppendEscapedValue(sb, message);
-        sb.Append('\"');
+        if (thread != null)
+        {
+            sb.Append(",\"Thread\":\"");
+            AppendEscapedValue(sb, thread);
+            sb.Append('\"');
+        }
+
+        if (message != null)
+        {
+            sb.Append(",\"Message\":\"");
+            AppendEscapedValue(sb, message);
+            sb.Append('\"');
+        }
 
         if (exception != null)
         {
