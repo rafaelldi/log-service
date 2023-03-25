@@ -1,3 +1,5 @@
+using System.IO.Compression;
+
 namespace logs_worker;
 
 public class Worker : BackgroundService
@@ -34,6 +36,8 @@ public class Worker : BackgroundService
             await Task.Delay(1000, stoppingToken);
         }
 
+        UnzipArchive(directory);
+
         _logger.LogInformation("Log files are found");
 
         var exporterTask = _exporter.ExportAsync(errorDirectory, stoppingToken);
@@ -62,6 +66,24 @@ public class Worker : BackgroundService
         {
             Directory.CreateDirectory(DefaultErrorDirectory);
         }
+    }
+
+    private void UnzipArchive(DirectoryInfo directory)
+    {
+        var files = directory.GetFiles();
+        if (files.Length > 1)
+        {
+            return;
+        }
+
+        var archive = files.Single();
+        if (archive.Extension != ".zip")
+        {
+            return;
+        }
+
+        _logger.LogInformation("Archive is found");
+        ZipFile.ExtractToDirectory(archive.FullName, directory.FullName);
     }
 
     private IFileParser? GetParser(FileInfo file) =>
