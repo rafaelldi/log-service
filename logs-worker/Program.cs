@@ -12,7 +12,6 @@ var host = Host.CreateDefaultBuilder(args)
         })
             .AddPolicyHandler(GetRetryPolicy());
 
-        services.AddSingleton<DateTimeProvider>();
         services.AddSingleton<SeqExporter>();
 
         var exporters = Assembly.GetExecutingAssembly()

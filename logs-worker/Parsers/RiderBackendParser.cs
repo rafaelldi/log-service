@@ -8,7 +8,6 @@ namespace logs_worker.Parsers;
 public class RiderBackendParser : IFileParser
 {
     private readonly ChannelWriter<Log> _writer;
-    private readonly DateTimeProvider _dateTimeProvider;
     private readonly ILogger<RiderBackendParser> _logger;
 
     private const string FileNamePattern = @"\d+.backend.log";
@@ -19,11 +18,9 @@ public class RiderBackendParser : IFileParser
     private readonly Regex _fileNameRegex = new(FileNamePattern);
     private readonly Regex _regex = new(Pattern);
 
-    public RiderBackendParser(SeqExporter seqExporter, DateTimeProvider dateTimeProvider,
-        ILogger<RiderBackendParser> logger)
+    public RiderBackendParser(SeqExporter seqExporter, ILogger<RiderBackendParser> logger)
     {
         _writer = seqExporter.GetWriter();
-        _dateTimeProvider = dateTimeProvider;
         _logger = logger;
     }
 
@@ -31,6 +28,7 @@ public class RiderBackendParser : IFileParser
 
     public async Task ParseAsync(FileInfo file, DirectoryInfo errorDirectory, CancellationToken ct)
     {
+        var creationDate = file.CreationTime;
         var errorFilePath = errorDirectory.FullName + "/" + file.Name;
         await using var errorWriter = File.CreateText(errorFilePath);
 
@@ -71,7 +69,7 @@ public class RiderBackendParser : IFileParser
 
             currentLog = new Log();
             parsedLogs++;
-            UpdateLogByMatch(currentLog, match);
+            UpdateLogByMatch(currentLog, match, creationDate);
         }
 
         if (currentLog is not null)
@@ -82,23 +80,23 @@ public class RiderBackendParser : IFileParser
         _logger.LogInformation("{LogCount} lines are parsed from the file {FileName}", parsedLogs, file.Name);
     }
 
-    private void UpdateLogByMatch(Log log, Match match)
+    private void UpdateLogByMatch(Log log, Match match, DateTime creationDate)
     {
         for (var i = 1; i < match.Groups.Count; i++)
         {
             var group = match.Groups[i];
-            UpdateLogByGroup(log, group);
+            UpdateLogByGroup(log, group, creationDate);
         }
     }
 
-    private void UpdateLogByGroup(Log log, Group group)
+    private void UpdateLogByGroup(Log log, Group group, DateTime creationDate)
     {
         switch (group.Name)
         {
             case "time":
                 if (TimeOnly.TryParse(group.Value, out var time))
                 {
-                    log.TimeStamp = _dateTimeProvider.LogDateTime + time.ToTimeSpan();
+                    log.TimeStamp = creationDate.Date + time.ToTimeSpan();
                 }
                 else
                 {
