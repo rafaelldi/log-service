@@ -9,14 +9,14 @@ services:
     volumes:
       - seq:/data
 
-  logs-worker:
-    container_name: logs-worker
-    image: logs-worker
+  log-worker:
+    container_name: log-worker
+    image: log-worker
     build:
       context: .
-      dockerfile: logs-worker/Dockerfile
+      dockerfile: log-worker/Dockerfile
     volumes:
-      - ${LOGS_FOLDER}:/logs-folder:rw
+      - ${LOGS_FOLDER}:/log-folder:rw
     depends_on:
       - seq
 
