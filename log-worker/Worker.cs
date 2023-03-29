@@ -4,8 +4,8 @@ namespace logs_worker;
 
 public class Worker : BackgroundService
 {
-    private const string DefaultLogDirectory = "/logs-folder";
-    private const string DefaultErrorDirectory = "/logs-folder/error";
+    private const string DefaultLogDirectory = "/log-folder";
+    private const string DefaultErrorDirectory = "/log-folder/error";
 
     private readonly IEnumerable<IFileParser> _parsers;
     private readonly SeqExporter _exporter;
